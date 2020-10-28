@@ -22,7 +22,7 @@ public class TwiceInARow extends AdvancedRobot {
 
     private static final int MIN_BORDER_DISTANCE = 110;
     private static final int ABSOLUTE_STEP = 5000;
-    private static final int APPROACH_DEVIATION = 12;
+    private static final int APPROACH_DEVIATION = 15;
     private static final int FIRE_BEARING_DISTANCE = 3;
 
     private int direction = ABSOLUTE_STEP;
@@ -80,6 +80,7 @@ public class TwiceInARow extends AdvancedRobot {
         if (e.isSentryRobot()) {
             return;
         }
+        
         double bearingDegrees = getHeading() + e.getBearing();
         double bearingDegreesFromGun = Utils.normalRelativeAngleDegrees(bearingDegrees - getGunHeading());
         double bearingDegreesFromRadar = Utils.normalRelativeAngleDegrees(bearingDegrees - getRadarHeading());
@@ -130,10 +131,12 @@ public class TwiceInARow extends AdvancedRobot {
         setTurnRadarRightRadians(Utils.normalRelativeAngle(absoluteBearing - getRadarHeadingRadians()));
         setTurnGunRightRadians(Utils.normalRelativeAngle(theta - getGunHeadingRadians()));
 
+        double approachDeviation = Math.max(APPROACH_DEVIATION, getOthers() * 3);
+
         if (this.direction > 0) {
-            setTurnRight(Utils.normalRelativeAngleDegrees(e.getBearing() + 90 - APPROACH_DEVIATION));
+            setTurnRight(Utils.normalRelativeAngleDegrees(deviate(e.getBearing() + 90 - approachDeviation)));
         } else {
-            setTurnRight(Utils.normalRelativeAngleDegrees(e.getBearing() + 90 + APPROACH_DEVIATION));
+            setTurnRight(Utils.normalRelativeAngleDegrees(deviate(e.getBearing() + 90 + approachDeviation)));
         }
 
         if (Math.abs(bearingDegreesFromRadar) <= FIRE_BEARING_DISTANCE) {
@@ -146,6 +149,38 @@ public class TwiceInARow extends AdvancedRobot {
             scan();
         }
     }
+
+    private double deviate(double bearing) {
+        double minDistance = 15;
+        if (Math.abs(getX() - getBattleFieldWidth()/2) <= minDistance && Math.abs(getY() - getBattleFieldHeight()/2) <= minDistance) {
+            // Keep the bearing when close to the center
+            return bearing;
+        }
+
+        double maxDeviationDegrees = Math.min(15, getOthers() * 2 + 2);
+
+        double centerBearing = getBearingDegrees(getBattleFieldWidth() / 2, getBattleFieldHeight() / 2);
+        
+        double bearingDiff = bearing - centerBearing;
+
+        double modified = bearing;
+        if (bearingDiff >=0 && bearingDiff <= maxDeviationDegrees) {
+            modified = centerBearing + maxDeviationDegrees; 
+        } else if (bearingDiff <=0 && bearingDiff >= -maxDeviationDegrees){
+            modified = centerBearing - maxDeviationDegrees;
+        }
+        if (Math.abs(modified - bearing) >= 0.1) {
+            System.out.println("original=" + bearing + ", modified=" + modified + ", num=" + getOthers() + ", max=" + maxDeviationDegrees + ", current=" + (modified - bearing));
+        }
+        return modified;
+    }
+    
+    double getBearingDegrees(double x, double y) {
+        double b = Math.PI/2 - Math.atan2(y - this.getY(), x - this.getX());
+        double brad = Utils.normalRelativeAngle(b - this.getHeadingRadians());
+        return Utils.normalRelativeAngleDegrees(brad / Math.PI * 180);
+    }
+
 
     @Override
     public void onHitByBullet(HitByBulletEvent e) {
