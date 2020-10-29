@@ -30,6 +30,7 @@ public class TwiceInARow extends AdvancedRobot {
     private static final int APPROACH_DEVIATION = 15;
     private static final int FIRE_BEARING_DISTANCE = 3;
     private static final double ENEMY_SPEED_OVERESTIMATE = 1.05;
+    private static final double WORST_ENEMY_TOLERANCE = 0.2;
 
     private int direction = ABSOLUTE_STEP;
     private Map<String, RobotProfile> profiles = new HashMap<String, RobotProfile>();
@@ -84,7 +85,7 @@ public class TwiceInARow extends AdvancedRobot {
         setAhead(this.direction);
     }
 
-    private boolean isPersonalTarget(String robotName) {
+    private boolean isPersonalEnemy(String robotName) {
         RobotProfile targetProfile = getProfile(robotName);
         if (targetProfile.dead) {
             return false;
@@ -98,7 +99,7 @@ public class TwiceInARow extends AdvancedRobot {
                 worstEnemy = p;
             }
         }
-        return worstEnemy == null || targetProfile.hitsByRobot >= worstEnemy.hitsByRobot;
+        return worstEnemy == null || targetProfile.hitsByRobot >= worstEnemy.hitsByRobot * (1 - WORST_ENEMY_TOLERANCE);
     }
 
     public void onScannedRobot(ScannedRobotEvent e) {
@@ -106,7 +107,7 @@ public class TwiceInARow extends AdvancedRobot {
             return;
         }
         
-        if(!isPersonalTarget(e.getName())) {
+        if(!isPersonalEnemy(e.getName())) {
             return;
         }
 
