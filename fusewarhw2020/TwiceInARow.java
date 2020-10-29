@@ -7,7 +7,6 @@ import java.util.Map;
 
 import robocode.AdvancedRobot;
 import robocode.BulletHitEvent;
-import robocode.BulletMissedEvent;
 import robocode.HitByBulletEvent;
 import robocode.HitRobotEvent;
 import robocode.HitWallEvent;
@@ -23,7 +22,7 @@ import robocode.util.Utils;
  */
 public class TwiceInARow extends AdvancedRobot {
 
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
 
     private static final int MIN_BORDER_DISTANCE = 110;
     private static final int ABSOLUTE_STEP = 5000;
@@ -35,12 +34,11 @@ public class TwiceInARow extends AdvancedRobot {
     private static final double WORST_ENEMY_TOLERANCE = 0.25;
     private static final double DEVIATION_FROM_CENTER_MAX = 10;
     private static final double DEVIATION_FROM_CENTER_MULTIPLIER = 3.0;
-    private static final double BULLET_SAVING = 0.8;
+    private static final double BULLET_SAVING = 1.0;
+    private static final double BULLET_MIN_ATTEMPTS_ENERGY = 5.0;
 
     private int direction = ABSOLUTE_STEP;
     private Map<String, RobotProfile> profiles = new HashMap<String, RobotProfile>();
-    private int totalHits = 0;
-    private int totalMisses = 0;
 
     public TwiceInARow() {
     }
@@ -126,20 +124,19 @@ public class TwiceInARow extends AdvancedRobot {
             return;
         }
 
+        RobotProfile p = getProfile(e.getName());
         
         double bearingDegrees = getHeading() + e.getBearing();
         double bearingDegreesFromRadar = Utils.normalRelativeAngleDegrees(bearingDegrees - getRadarHeading());
 
-        double bulletsOutcomes = totalHits + totalMisses;
         double hitPrecision = 1.0;
-        if (bulletsOutcomes > 0) {
-            hitPrecision = ((double) totalHits) / bulletsOutcomes;
+        if (p.attemptsEnergy >= BULLET_MIN_ATTEMPTS_ENERGY) {
+            hitPrecision = p.hitsEnergy / p.attemptsEnergy;
         }
         double bulletPower = Rules.MAX_BULLET_POWER - (1.0 - hitPrecision) * BULLET_SAVING;
         bulletPower = Math.min(Rules.MAX_BULLET_POWER, bulletPower);
         bulletPower = Math.max(Rules.MIN_BULLET_POWER, Math.min(e.getEnergy()/4, bulletPower));
         
-        RobotProfile p = getProfile(e.getName());
         Double lastEnergy = p.energy;
         if (lastEnergy != null) {
             double diff = lastEnergy - e.getEnergy();
@@ -191,6 +188,10 @@ public class TwiceInARow extends AdvancedRobot {
 
         if (Math.toDegrees(gunDiffRadians) <= FIRE_BEARING_DISTANCE) { 
             if (getGunHeat() == 0 && getEnergy() >= bulletPower) {
+                p.attemptsEnergy+=bulletPower;
+                if (DEBUG) {
+                    System.out.println("Fire against " + p.name + "(" + bulletPower + ")");
+                }
                 fire(bulletPower);
             }
         }
@@ -270,14 +271,8 @@ public class TwiceInARow extends AdvancedRobot {
 
     @Override
     public void onBulletHit(BulletHitEvent event) {
-        this.totalHits++;
+        getProfile(event.getName()).hitsEnergy+=event.getBullet().getPower();
     }
-
-    @Override
-    public void onBulletMissed(BulletMissedEvent event) {
-        this.totalMisses++;
-    }
-
     
 
     /**
@@ -312,6 +307,8 @@ public class TwiceInARow extends AdvancedRobot {
         private boolean goAwayStrategy = true;
         private double energyLoss;
         private boolean dead;
+        private double attemptsEnergy;
+        private double hitsEnergy;
         
         private RobotProfile(String name) {
             this.name = name;
