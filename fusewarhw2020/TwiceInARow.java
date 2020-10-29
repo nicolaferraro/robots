@@ -2,9 +2,7 @@ package fusewarhw2020;
 
 import java.awt.*;
 import java.awt.geom.Point2D;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import robocode.AdvancedRobot;
@@ -31,11 +29,13 @@ public class TwiceInARow extends AdvancedRobot {
     private static final int ABSOLUTE_STEP = 5000;
     private static final int RAMMING_DEVIATION_MIN_ENEMIES = 10;
     private static final int RAMMING_DEVIATION_MIN = 0;
-    private static final int RAMMING_DEVIATION_MAX = 40;
+    private static final int RAMMING_DEVIATION_MAX = 25;
     private static final int FIRE_BEARING_DISTANCE = 3;
     private static final double ENEMY_SPEED_OVERESTIMATE = 1.05;
-    private static final double WORST_ENEMY_TOLERANCE = 0.3;
-    private static final boolean DEVIATION_FROM_CENTER = false;
+    private static final double WORST_ENEMY_TOLERANCE = 0.25;
+    private static final double DEVIATION_FROM_CENTER_MAX = 10;
+    private static final double DEVIATION_FROM_CENTER_MULTIPLIER = 3.0;
+    private static final double BULLET_SAVING = 0.8;
 
     private int direction = ABSOLUTE_STEP;
     private Map<String, RobotProfile> profiles = new HashMap<String, RobotProfile>();
@@ -93,7 +93,6 @@ public class TwiceInARow extends AdvancedRobot {
     private double rammingDeviation() {
         int enemies = Math.min(getOthers(), RAMMING_DEVIATION_MIN_ENEMIES);
         double ratio = 1.0 - (enemies * 1.0 / RAMMING_DEVIATION_MIN_ENEMIES);
-        System.out.println("AAA: " + enemies + " - " + ratio);
         return RAMMING_DEVIATION_MIN + ratio * (RAMMING_DEVIATION_MAX - RAMMING_DEVIATION_MIN);
     }
 
@@ -107,11 +106,15 @@ public class TwiceInARow extends AdvancedRobot {
             if (p.dead) {
                 continue;
             }
-            if (worstEnemy == null || p.hitsByRobot > worstEnemy.hitsByRobot) {
+            if (worstEnemy == null || p.energyLoss > worstEnemy.energyLoss) {
                 worstEnemy = p;
             }
         }
-        return worstEnemy == null || targetProfile.hitsByRobot >= worstEnemy.hitsByRobot * (1 - WORST_ENEMY_TOLERANCE);
+        boolean ok = worstEnemy == null || targetProfile.energyLoss >= worstEnemy.energyLoss * (1 - WORST_ENEMY_TOLERANCE);
+        if (DEBUG && worstEnemy != null) {
+            System.out.println("Worst enemy: " + worstEnemy.name + " (" + worstEnemy.energyLoss + "), current target: " + robotName + " (" + targetProfile.energyLoss + ") - targeting: " + ok);
+        }
+        return ok;
     }
 
     public void onScannedRobot(ScannedRobotEvent e) {
@@ -132,8 +135,9 @@ public class TwiceInARow extends AdvancedRobot {
         if (bulletsOutcomes > 0) {
             hitPrecision = ((double) totalHits) / bulletsOutcomes;
         }
-        double wantedBulletPower = Rules.MAX_BULLET_POWER - (1.0 - hitPrecision) * 0.5;
-        double bulletPower = Math.max(Rules.MIN_BULLET_POWER, Math.min(e.getEnergy()/4, wantedBulletPower));
+        double bulletPower = Rules.MAX_BULLET_POWER - (1.0 - hitPrecision) * BULLET_SAVING;
+        bulletPower = Math.min(Rules.MAX_BULLET_POWER, bulletPower);
+        bulletPower = Math.max(Rules.MIN_BULLET_POWER, Math.min(e.getEnergy()/4, bulletPower));
         
         RobotProfile p = getProfile(e.getName());
         Double lastEnergy = p.energy;
@@ -220,17 +224,13 @@ public class TwiceInARow extends AdvancedRobot {
     }
 
     private double deviate(double bearing) {
-        if (!DEVIATION_FROM_CENTER) {
-            return bearing;
-        }
-
         double minDistance = 15;
         if (Math.abs(getX() - getBattleFieldWidth()/2) <= minDistance && Math.abs(getY() - getBattleFieldHeight()/2) <= minDistance) {
             // Keep the bearing when close to the center
             return bearing;
         }
 
-        double maxDeviationDegrees = Math.min(45, getOthers() * 5);
+        double maxDeviationDegrees = Math.min(DEVIATION_FROM_CENTER_MAX, getOthers() * DEVIATION_FROM_CENTER_MULTIPLIER);
 
         double centerBearing = getBearingDegrees(getBattleFieldWidth() / 2, getBattleFieldHeight() / 2);
         
@@ -243,7 +243,7 @@ public class TwiceInARow extends AdvancedRobot {
             modified = centerBearing - maxDeviationDegrees;
         }
         if (DEBUG && Math.abs(modified - bearing) >= 0.1) {
-            System.out.println("original=" + bearing + ", modified=" + modified + ", num=" + getOthers() + ", max=" + maxDeviationDegrees + ", current=" + (modified - bearing));
+            System.out.println("Deviation original=" + bearing + ", modified=" + modified + ", num=" + getOthers() + ", max=" + maxDeviationDegrees + ", current=" + (modified - bearing));
         }
         return modified;
     }
@@ -258,7 +258,7 @@ public class TwiceInARow extends AdvancedRobot {
     @Override
     public void onHitByBullet(HitByBulletEvent e) {
         RobotProfile p = getProfile(e.getName());
-        p.hitsByRobot++;
+        p.energyLoss+=e.getPower();
         p.goAwayStrategy = !p.goAwayStrategy;
     }
 
@@ -300,18 +300,25 @@ public class TwiceInARow extends AdvancedRobot {
     private RobotProfile getProfile(String name) {
         RobotProfile profile = this.profiles.get(name);
         if (profile == null) {
-            profile = new RobotProfile();
+            profile = new RobotProfile(name);
             this.profiles.put(name, profile);
         }
         return profile;
     }
 
     private static class RobotProfile {
+        private String name;
         private Double energy;
         private boolean goAwayStrategy = true;
-        private int hitsByRobot;
+        private double energyLoss;
         private boolean dead;
+        
+        private RobotProfile(String name) {
+            this.name = name;
+        }
     }
+
+    
 
     private static class Point {
         private double x,y;
