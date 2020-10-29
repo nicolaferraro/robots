@@ -25,12 +25,17 @@ import robocode.util.Utils;
  */
 public class TwiceInARow extends AdvancedRobot {
 
+    private static final boolean DEBUG = true;
+
     private static final int MIN_BORDER_DISTANCE = 110;
     private static final int ABSOLUTE_STEP = 5000;
-    private static final int APPROACH_DEVIATION = 15;
+    private static final int RAMMING_DEVIATION_MIN_ENEMIES = 10;
+    private static final int RAMMING_DEVIATION_MIN = 0;
+    private static final int RAMMING_DEVIATION_MAX = 40;
     private static final int FIRE_BEARING_DISTANCE = 3;
     private static final double ENEMY_SPEED_OVERESTIMATE = 1.05;
-    private static final double WORST_ENEMY_TOLERANCE = 0.2;
+    private static final double WORST_ENEMY_TOLERANCE = 0.3;
+    private static final boolean DEVIATION_FROM_CENTER = false;
 
     private int direction = ABSOLUTE_STEP;
     private Map<String, RobotProfile> profiles = new HashMap<String, RobotProfile>();
@@ -45,7 +50,7 @@ public class TwiceInARow extends AdvancedRobot {
         setBodyColor(Color.BLACK);
         setGunColor(Color.RED);
         setRadarColor(Color.BLACK);
-        setBulletColor(Color.BLACK);
+        setBulletColor(Color.RED);
         setScanColor(Color.BLACK);
 
         setAdjustRadarForRobotTurn(true);
@@ -83,6 +88,13 @@ public class TwiceInARow extends AdvancedRobot {
     public void reverseDirection() {
         this.direction = -direction;
         setAhead(this.direction);
+    }
+
+    private double rammingDeviation() {
+        int enemies = Math.min(getOthers(), RAMMING_DEVIATION_MIN_ENEMIES);
+        double ratio = 1.0 - (enemies * 1.0 / RAMMING_DEVIATION_MIN_ENEMIES);
+        System.out.println("AAA: " + enemies + " - " + ratio);
+        return RAMMING_DEVIATION_MIN + ratio * (RAMMING_DEVIATION_MAX - RAMMING_DEVIATION_MIN);
     }
 
     private boolean isPersonalEnemy(String robotName) {
@@ -151,7 +163,9 @@ public class TwiceInARow extends AdvancedRobot {
         double predictedX = predictedPoint.getX();
         double predictedY = predictedPoint.getY();
 
-        System.out.println("Iterations=" + iterations + ", time=" + time + ", Predicted x=" + predictedX + ", y=" + predictedY);
+        if (DEBUG) {
+            System.out.println("Iterations=" + iterations + ", time=" + time + ", Predicted x=" + predictedX + ", y=" + predictedY);
+        }
 
         double theta = Utils.normalAbsoluteAngle(Math.atan2(predictedX - getX(), predictedY - getY()));
         
@@ -160,7 +174,10 @@ public class TwiceInARow extends AdvancedRobot {
         double gunDiffRadians = Utils.normalRelativeAngle(theta - getGunHeadingRadians());
         setTurnGunRightRadians(gunDiffRadians);
 
-        double approachDeviation = Math.max(APPROACH_DEVIATION, getOthers() * 3);
+        double approachDeviation = rammingDeviation();
+        if (DEBUG) {
+            System.out.println("Ramming: " + approachDeviation);
+        }
 
         if (this.direction > 0) {
             setTurnRight(Utils.normalRelativeAngleDegrees(deviate(e.getBearing() + 90 - approachDeviation)));
@@ -203,6 +220,10 @@ public class TwiceInARow extends AdvancedRobot {
     }
 
     private double deviate(double bearing) {
+        if (!DEVIATION_FROM_CENTER) {
+            return bearing;
+        }
+
         double minDistance = 15;
         if (Math.abs(getX() - getBattleFieldWidth()/2) <= minDistance && Math.abs(getY() - getBattleFieldHeight()/2) <= minDistance) {
             // Keep the bearing when close to the center
@@ -221,7 +242,7 @@ public class TwiceInARow extends AdvancedRobot {
         } else if (bearingDiff <=0 && bearingDiff >= -maxDeviationDegrees){
             modified = centerBearing - maxDeviationDegrees;
         }
-        if (Math.abs(modified - bearing) >= 0.1) {
+        if (DEBUG && Math.abs(modified - bearing) >= 0.1) {
             System.out.println("original=" + bearing + ", modified=" + modified + ", num=" + getOthers() + ", max=" + maxDeviationDegrees + ", current=" + (modified - bearing));
         }
         return modified;
