@@ -2,13 +2,18 @@ package fusewarhw2020;
 
 import java.awt.*;
 import java.awt.geom.Point2D;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import robocode.AdvancedRobot;
+import robocode.BulletHitEvent;
+import robocode.BulletMissedEvent;
 import robocode.HitByBulletEvent;
 import robocode.HitRobotEvent;
 import robocode.HitWallEvent;
+import robocode.RobotDeathEvent;
 import robocode.Rules;
 import robocode.ScannedRobotEvent;
 import robocode.util.Utils;
@@ -24,9 +29,12 @@ public class TwiceInARow extends AdvancedRobot {
     private static final int ABSOLUTE_STEP = 5000;
     private static final int APPROACH_DEVIATION = 15;
     private static final int FIRE_BEARING_DISTANCE = 3;
+    private static final double ENEMY_SPEED_OVERESTIMATE = 1.05;
 
     private int direction = ABSOLUTE_STEP;
     private Map<String, RobotProfile> profiles = new HashMap<String, RobotProfile>();
+    private int totalHits = 0;
+    private int totalMisses = 0;
 
     public TwiceInARow() {
     }
@@ -76,24 +84,44 @@ public class TwiceInARow extends AdvancedRobot {
         setAhead(this.direction);
     }
 
+    private boolean isPersonalTarget(String robotName) {
+        RobotProfile targetProfile = getProfile(robotName);
+        if (targetProfile.dead) {
+            return false;
+        }
+        RobotProfile worstEnemy = null;
+        for (RobotProfile p : this.profiles.values()) {
+            if (p.dead) {
+                continue;
+            }
+            if (worstEnemy == null || p.hitsByRobot > worstEnemy.hitsByRobot) {
+                worstEnemy = p;
+            }
+        }
+        return worstEnemy == null || targetProfile.hitsByRobot >= worstEnemy.hitsByRobot;
+    }
+
     public void onScannedRobot(ScannedRobotEvent e) {
         if (e.isSentryRobot()) {
             return;
         }
         
+        if(!isPersonalTarget(e.getName())) {
+            return;
+        }
+
+        
         double bearingDegrees = getHeading() + e.getBearing();
-        double bearingDegreesFromGun = Utils.normalRelativeAngleDegrees(bearingDegrees - getGunHeading());
         double bearingDegreesFromRadar = Utils.normalRelativeAngleDegrees(bearingDegrees - getRadarHeading());
 
-        double bulletPower = Math.min(4.5 - Math.abs(bearingDegreesFromGun) / 2 - e.getDistance() / 250, getEnergy() - Rules.MIN_BULLET_POWER);
-        double myX = getX();
-        double myY = getY();
-        double absoluteBearing = getHeadingRadians() + e.getBearingRadians();
-        double enemyX = getX() + e.getDistance() * Math.sin(absoluteBearing);
-        double enemyY = getY() + e.getDistance() * Math.cos(absoluteBearing);
-        double enemyHeading = e.getHeadingRadians();
-        double enemyVelocity = e.getVelocity();
-
+        double bulletsOutcomes = totalHits + totalMisses;
+        double hitPrecision = 1.0;
+        if (bulletsOutcomes > 0) {
+            hitPrecision = ((double) totalHits) / bulletsOutcomes;
+        }
+        double wantedBulletPower = Rules.MAX_BULLET_POWER - (1.0 - hitPrecision) * 0.5;
+        double bulletPower = Math.max(Rules.MIN_BULLET_POWER, Math.min(e.getEnergy()/4, wantedBulletPower));
+        
         RobotProfile p = getProfile(e.getName());
         Double lastEnergy = p.energy;
         if (lastEnergy != null) {
@@ -103,33 +131,33 @@ public class TwiceInARow extends AdvancedRobot {
             }
         }
         getProfile(e.getName()).energy = e.getEnergy();
+        
+        double bulletSpeed = (20.0 - 3.0 * bulletPower);
 
-        double deltaTime = 0;
-        double battleFieldHeight = getBattleFieldHeight(),
-            battleFieldWidth = getBattleFieldWidth();
-        double predictedX = enemyX, predictedY = enemyY;
-
-        while ((++deltaTime) * (20.0 - 3.0 * bulletPower) <
-               Point2D.Double.distance(myX, myY, predictedX, predictedY)) {
-            predictedX += Math.sin(enemyHeading) * enemyVelocity;
-            predictedY += Math.cos(enemyHeading) * enemyVelocity;
-            if (predictedX < 18.0
-                || predictedY < 18.0
-                || predictedX > battleFieldWidth - 18.0
-                || predictedY > battleFieldHeight - 18.0) {
-                predictedX = Math.min(Math.max(18.0, predictedX),
-                                      battleFieldWidth - 18.0);
-                predictedY = Math.min(Math.max(18.0, predictedY),
-                                      battleFieldHeight - 18.0);
+        int maxIterations = 50;
+        int iterations = 0;
+        double time = 0.0;
+        while ((++iterations) <= maxIterations) {
+            Point enemyPos = getFuturePoint(e, time);
+            double oldTime = time;
+            time = Point2D.distance(getX(), getY(), enemyPos.getX(), enemyPos.getY()) / bulletSpeed;
+            if (Utils.isNear(time, oldTime)) {
                 break;
             }
         }
 
-        double theta = Utils.normalAbsoluteAngle(Math.atan2(
-            predictedX - getX(), predictedY - getY()));
+        Point predictedPoint = getFuturePoint(e, time);
+        double predictedX = predictedPoint.getX();
+        double predictedY = predictedPoint.getY();
 
+        System.out.println("Iterations=" + iterations + ", time=" + time + ", Predicted x=" + predictedX + ", y=" + predictedY);
+
+        double theta = Utils.normalAbsoluteAngle(Math.atan2(predictedX - getX(), predictedY - getY()));
+        
+        double absoluteBearing = getHeadingRadians() + e.getBearingRadians();
         setTurnRadarRightRadians(Utils.normalRelativeAngle(absoluteBearing - getRadarHeadingRadians()));
-        setTurnGunRightRadians(Utils.normalRelativeAngle(theta - getGunHeadingRadians()));
+        double gunDiffRadians = Utils.normalRelativeAngle(theta - getGunHeadingRadians());
+        setTurnGunRightRadians(gunDiffRadians);
 
         double approachDeviation = Math.max(APPROACH_DEVIATION, getOthers() * 3);
 
@@ -139,8 +167,8 @@ public class TwiceInARow extends AdvancedRobot {
             setTurnRight(Utils.normalRelativeAngleDegrees(deviate(e.getBearing() + 90 + approachDeviation)));
         }
 
-        if (Math.abs(bearingDegreesFromRadar) <= FIRE_BEARING_DISTANCE) {
-            if (getGunHeat() == 0 && getEnergy() > .2) {
+        if (Math.toDegrees(gunDiffRadians) <= FIRE_BEARING_DISTANCE) { 
+            if (getGunHeat() == 0 && getEnergy() >= bulletPower) {
                 fire(bulletPower);
             }
         }
@@ -150,6 +178,29 @@ public class TwiceInARow extends AdvancedRobot {
         }
     }
 
+    private Point getFuturePoint(ScannedRobotEvent e, double time) {
+        double absoluteBearing = getHeadingRadians() + e.getBearingRadians();
+        double enemyX = getX() + e.getDistance() * Math.sin(absoluteBearing);
+        double enemyY = getY() + e.getDistance() * Math.cos(absoluteBearing);
+
+        double velocity = e.getVelocity() * ENEMY_SPEED_OVERESTIMATE;
+
+        double predictedX = enemyX + Math.sin(e.getHeadingRadians()) * velocity * time;
+        double predictedY = enemyY + Math.cos(e.getHeadingRadians()) * velocity * time;
+
+        if (predictedX < 18.0
+            || predictedY < 18.0
+            || predictedX > getBattleFieldWidth() - 18.0
+            || predictedY > getBattleFieldHeight() - 18.0) {
+            predictedX = Math.min(Math.max(18.0, predictedX),
+                                    getBattleFieldWidth() - 18.0);
+            predictedY = Math.min(Math.max(18.0, predictedY),
+                                    getBattleFieldHeight() - 18.0);
+        }
+
+        return new Point(predictedX, predictedY);
+    }
+
     private double deviate(double bearing) {
         double minDistance = 15;
         if (Math.abs(getX() - getBattleFieldWidth()/2) <= minDistance && Math.abs(getY() - getBattleFieldHeight()/2) <= minDistance) {
@@ -157,7 +208,7 @@ public class TwiceInARow extends AdvancedRobot {
             return bearing;
         }
 
-        double maxDeviationDegrees = Math.min(15, getOthers() * 2 + 2);
+        double maxDeviationDegrees = Math.min(45, getOthers() * 5);
 
         double centerBearing = getBearingDegrees(getBattleFieldWidth() / 2, getBattleFieldHeight() / 2);
         
@@ -185,8 +236,27 @@ public class TwiceInARow extends AdvancedRobot {
     @Override
     public void onHitByBullet(HitByBulletEvent e) {
         RobotProfile p = getProfile(e.getName());
+        p.hitsByRobot++;
         p.goAwayStrategy = !p.goAwayStrategy;
     }
+
+    @Override
+    public void onRobotDeath(RobotDeathEvent e) {
+        RobotProfile p = getProfile(e.getName());
+        p.dead = true;
+    }
+
+    @Override
+    public void onBulletHit(BulletHitEvent event) {
+        this.totalHits++;
+    }
+
+    @Override
+    public void onBulletMissed(BulletMissedEvent event) {
+        this.totalMisses++;
+    }
+
+    
 
     /**
      * onHitRobot:  Back up!
@@ -217,5 +287,21 @@ public class TwiceInARow extends AdvancedRobot {
     private static class RobotProfile {
         private Double energy;
         private boolean goAwayStrategy = true;
+        private int hitsByRobot;
+        private boolean dead;
+    }
+
+    private static class Point {
+        private double x,y;
+        Point(double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
+        public double getX() {
+            return x;
+        }
+        public double getY() {
+            return y;
+        }
     }
 }
