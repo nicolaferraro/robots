@@ -1,4 +1,4 @@
-package fusewarhw2020;
+package warhw2020;
 
 import java.awt.*;
 import java.awt.geom.Point2D;
