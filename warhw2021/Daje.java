@@ -28,9 +28,10 @@ public class Daje extends AdvancedRobot {
 
     private static final int MIN_BORDER_DISTANCE = 110;
     private static final int ABSOLUTE_STEP = 5000;
-    private static final int RAMMING_DEVIATION_MIN_ENEMIES = 10;
-    private static final int RAMMING_DEVIATION_MIN = 5;
-    private static final int RAMMING_DEVIATION_MAX = 30;
+    private static final int RAMMING_DEVIATION_MIN_ENEMIES = 7;
+    private static final int RAMMING_DEVIATION_MIN = -10;
+    private static final int RAMMING_DEVIATION_MAX = 45;
+    private static final double RAMMING_ENERGY_RATIO_IMBALANCE = 2.70;
     private static final int FIRE_BEARING_DISTANCE = 3;
     private static final double ENEMY_SPEED_OVERESTIMATE = 1.05;
     private static final double WORST_ENEMY_TOLERANCE = 0.25;
@@ -39,6 +40,7 @@ public class Daje extends AdvancedRobot {
     private static final double BULLET_SAVING_PRECISION = 1.0;
     private static final double BULLET_SAVING_DISTANCE = 0.5;
     private static final double BULLET_MIN_ATTEMPTS_ENERGY = 5.0;
+    private static final double BULLET_SAVE_SHOTS_WHEN_LOSING = 4.1;
     private static final int INITIALIZATION_MAX_TIME = 10;
     private static final double INITIALIZATION_MAX_DAMAGE = 2.9;
     private static final double INITIALIZATION_MAX_ENERGY_LOSS = 5.0;
@@ -102,12 +104,12 @@ public class Daje extends AdvancedRobot {
         double energyRatio = numRatio;
         RobotProfile p = getProfile(targetRobot);
         if (p != null && p.energy != null) {
-            energyRatio = getEnergy() / p.energy;
+            energyRatio = getEnergy() / (p.energy * RAMMING_ENERGY_RATIO_IMBALANCE);
             energyRatio = Math.min(1.0, energyRatio);
         }
         double ratio = Math.sqrt(numRatio * energyRatio);
         if (DEBUG) {
-            out.println("Compute ramming: numRatio=" + numRatio + ", energyRation=" + energyRatio + ", combined=" + ratio);
+            out.println("Compute ramming: numRatio=" + numRatio + ", energyRatio=" + energyRatio + ", combined=" + ratio);
         }
         double ramming = RAMMING_DEVIATION_MIN + ratio * (RAMMING_DEVIATION_MAX - RAMMING_DEVIATION_MIN);
         return ramming;
@@ -173,6 +175,7 @@ public class Daje extends AdvancedRobot {
         double bulletPower = Rules.MAX_BULLET_POWER - (1.0 - hitPrecision) * BULLET_SAVING_PRECISION - (1.0 - distancePrecision) * BULLET_SAVING_DISTANCE;
         bulletPower = Math.min(Rules.MAX_BULLET_POWER, bulletPower);
         bulletPower = Math.max(Rules.MIN_BULLET_POWER, Math.min(e.getEnergy()/4, bulletPower));
+        bulletPower = Math.min(getEnergy() / BULLET_SAVE_SHOTS_WHEN_LOSING, bulletPower); // Save some shots when we're dying
         
         if (DEBUG) {
             out.println("Bullet power: (" + bulletPower + ") hitPrecision=" + hitPrecision + ", distancePrecision=" + distancePrecision);
