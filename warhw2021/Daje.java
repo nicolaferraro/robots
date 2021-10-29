@@ -30,12 +30,12 @@ public class Daje extends AdvancedRobot {
     private static final int MIN_BORDER_DISTANCE = 110;
     private static final int ABSOLUTE_STEP = 5000;
     private static final int RAMMING_DEVIATION_MIN_ENEMIES = 7;
-    private static final int RAMMING_DEVIATION_MIN = -10;
+    private static final int RAMMING_DEVIATION_MIN = 10;
     private static final int RAMMING_DEVIATION_MAX = 45;
     private static final double RAMMING_ENERGY_RATIO_IMBALANCE = 2.70;
     private static final int FIRE_BEARING_DISTANCE = 3;
     private static final double ENEMY_SPEED_VARIATION = 0.15;
-    private static final double WORST_ENEMY_TOLERANCE = 0.25;
+    private static final double WORST_ENEMY_TOLERANCE = 0.35;
     private static final double DEVIATION_FROM_CENTER_MAX = 10;
     private static final double DEVIATION_FROM_CENTER_MULTIPLIER = 3.0;
     private static final double BULLET_SAVING_PRECISION = 1.0;
@@ -426,6 +426,8 @@ public class Daje extends AdvancedRobot {
      * onHitRobot:  Back up!
      */
     public void onHitRobot(HitRobotEvent e) {
+        RobotProfile p = getProfile(e.getName());
+        p.energyLoss+=0.6;
         // If we're moving the other robot, reverse!
         if (e.isMyFault()) {
             reverseDirection();
