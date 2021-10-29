@@ -9,6 +9,7 @@ import java.util.Map;
 
 import robocode.AdvancedRobot;
 import robocode.BulletHitEvent;
+import robocode.BulletMissedEvent;
 import robocode.HitByBulletEvent;
 import robocode.HitRobotEvent;
 import robocode.HitWallEvent;
@@ -24,7 +25,7 @@ import robocode.util.Utils;
  */
 public class Daje extends AdvancedRobot {
 
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
 
     private static final int MIN_BORDER_DISTANCE = 110;
     private static final int ABSOLUTE_STEP = 5000;
@@ -33,7 +34,7 @@ public class Daje extends AdvancedRobot {
     private static final int RAMMING_DEVIATION_MAX = 45;
     private static final double RAMMING_ENERGY_RATIO_IMBALANCE = 2.70;
     private static final int FIRE_BEARING_DISTANCE = 3;
-    private static final double ENEMY_SPEED_OVERESTIMATE = 1.05;
+    private static final double ENEMY_SPEED_VARIATION = 0.15;
     private static final double WORST_ENEMY_TOLERANCE = 0.25;
     private static final double DEVIATION_FROM_CENTER_MAX = 10;
     private static final double DEVIATION_FROM_CENTER_MULTIPLIER = 3.0;
@@ -48,6 +49,7 @@ public class Daje extends AdvancedRobot {
     private int direction = ABSOLUTE_STEP;
     private Map<String, RobotProfile> profiles = new HashMap<String, RobotProfile>();
     private Double initialEnergy;
+    private int velocityVariationDir = 1;
 
     public Daje() {
     }
@@ -345,7 +347,8 @@ public class Daje extends AdvancedRobot {
         double enemyX = getX() + e.getDistance() * Math.sin(absoluteBearing);
         double enemyY = getY() + e.getDistance() * Math.cos(absoluteBearing);
 
-        double velocity = e.getVelocity() * ENEMY_SPEED_OVERESTIMATE;
+        double velocityCorrector = 1 + (this.velocityVariationDir * ENEMY_SPEED_VARIATION);
+        double velocity = e.getVelocity() * velocityCorrector;
 
         double predictedX = enemyX + Math.sin(e.getHeadingRadians()) * velocity * time;
         double predictedY = enemyY + Math.cos(e.getHeadingRadians()) * velocity * time;
@@ -411,6 +414,11 @@ public class Daje extends AdvancedRobot {
     @Override
     public void onBulletHit(BulletHitEvent event) {
         getProfile(event.getName()).hitsEnergy+=event.getBullet().getPower();
+    }
+
+    @Override
+    public void onBulletMissed(BulletMissedEvent event) {
+        this.velocityVariationDir = - this.velocityVariationDir;
     }
     
 
